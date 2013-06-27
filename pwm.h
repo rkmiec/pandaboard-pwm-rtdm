@@ -1,9 +1,3 @@
-/*
- * pwm.h
- *
- */
-
-
 #ifndef PWM_H
 #define PWN_H
 

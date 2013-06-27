@@ -1,8 +1,19 @@
-obj-m = pwm.o
-KVERSION = 3.1.0-1282-omap4
-INCLUDEDIR = /usr/src/linux=headers-$(VERSION)/arch/arm/plat-omap/include
+MODULES = pwm
 
-all:
-	make -I $(INCLUDEDIR) -C /lib/modules/$(KVERSION)/build M=$(PWD) modules
-clean:
-	make -C /lib/modules/$(KVERSION)/build M=$(PWD) clean
+KSRC ?= /lib/modules/$(shell uname -r)/build
+
+OBJS     := ${patsubst %, %.o, $(MODULES)}
+CLEANMOD := ${patsubst %, .%*, $(MODULES)}
+PWD      := $(shell if [ "$$PWD" != "" ]; then echo $$PWD; else pwd; fi)
+
+obj-m        := $(OBJS)
+EXTRA_CFLAGS := -I$(KSRC)/include/xenomai 
+EXTRA_CFLAGS += -I$(KSRC)/include/xenomai/posix $(ADD_CFLAGS)
+
+all::
+	$(MAKE) -C $(KSRC) SUBDIRS=$(PWD) modules
+
+clean::
+	$(RM) $(CLEANMOD) *.o *.ko *.mod.c Module*.symvers 
+	$(RM) Module.markers modules.order
+	$(RM) -R .tmp*

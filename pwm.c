@@ -10,17 +10,20 @@
 #include <plat/dmtimer.h>
 #include <linux/types.h>
 
+#include <rtdm/rtdm_driver.h>
+
 #include "pwm.h"
 
 //pointer to data struct
 static struct pwm_data pwm_data_ptr;
+static rtdm_irq_t irqt;
 
 #define TIMER_MAX 0xFFFFFFFF
 
 
 // do some kernel module documentation
-MODULE_AUTHOR("Justin Griggs <justin@bustedengineering.com>");
-MODULE_DESCRIPTION("OMAP PWM GPIO generation Module for robotics applications");
+MODULE_AUTHOR("Robert Kmiec <robertkmiec1989@gmail.com>");
+MODULE_DESCRIPTION("Hardware PWM using GPIO");
 MODULE_LICENSE("GPL");
 
 
@@ -30,16 +33,16 @@ static void timer_handler(void) {
 	omap_dm_timer_write_status(timer_ptr,OMAP_TIMER_INT_OVERFLOW);
 	omap_dm_timer_read_status(timer_ptr); //you need to do this read
 	//omap_dm_timer_write_counter(timer_ptr,0);	
-	//printk("pwm module: Interrupt ");
+	//rtdm_printk("pwm module: Interrupt ");
 
  	// toggle pin
 	if(gpio_get_value(pwm_data_ptr.pin) == 0 ) {
 		gpio_set_value(pwm_data_ptr.pin,1);
-		//printk("high \n");
+		//rtdm_printk("high \n");
 	}
 	else {
 		gpio_set_value(pwm_data_ptr.pin,0);
-		//printk("low \n");
+		//rtdm_printk("low \n");
 	}
 
 }
@@ -47,12 +50,42 @@ static void timer_handler(void) {
  
 
 //the interrupt handler
-static irqreturn_t timer_irq_handler(int irq, void *dev_id) {
+//static irqreturn_t timer_irq_handler(int irq, void *dev_id) {
+int timer_irq_handler(rtdm_irq_t *irq_handle) {
 
 	timer_handler();
 	// tell the kernel it's handled
-	return IRQ_HANDLED;
+	return RTDM_IRQ_HANDLED;
 }
+
+
+static struct rtdm_device device = { 
+	//INFO: definicja tej struktury
+	.struct_version = RTDM_DEVICE_STRUCT_VER,
+	//klasa urzadzenia RTDM named/protocol
+	.device_flags = RTDM_NAMED_DEVICE | RTDM_EXCLUSIVE,
+	//rozmiar struktury z danymi
+	//.context_size = sizeof(data_t),
+	//nazwa urzadzenia (tylko named)
+	.device_name = "gpio",
+	//metoda open dla nrt
+	//.open_nrt = rtdm_open_nrt,
+	//dodatkowe operacje
+	//.ops = { 
+		//.close_nrt = rtdm_close_nrt,
+		//.read_rt = rtdm_read_rt,
+	//},  
+	.device_class = RTDM_CLASS_EXPERIMENTAL,
+	.device_sub_class = 4711,
+	//INFO
+	.profile_version = 1,
+	.driver_name = "interrupt controller",
+	.driver_version = RTDM_DRIVER_VER(0,1,2),
+	.peripheral_name = "gpio",
+	.provider_name = "rkmiec",
+	.proc_name = device.device_name,
+};
+		
 
 // set the pwm frequency
 static int set_pwm_freq(int freq) {
@@ -88,12 +121,12 @@ static int pwm_setup_pin(uint32_t gpio_number) {
 	// see if that pin is available to use
 	if (gpio_is_valid(gpio_number)) {
 
-		printk("pwm module: setting up gpio pin %i...",gpio_number);
+		rtdm_printk("pwm module: setting up gpio pin %i...",gpio_number);
 		// allocate the GPIO pin
 		err = gpio_request(gpio_number,"pwmIRQ");
 		//error check
 		if(err) {
-			printk("pwm module: failed to request GPIO %i\n",gpio_number);
+			rtdm_printk("pwm module: failed to request GPIO %i\n",gpio_number);
 			return -1;
 		}
 
@@ -102,7 +135,7 @@ static int pwm_setup_pin(uint32_t gpio_number) {
 
 		//error check
 		if(err) {
-			printk("pwm module: failed to set GPIO to ouput\n");
+			rtdm_printk("pwm module: failed to set GPIO to ouput\n");
 			return -1;
 		}
 
@@ -111,13 +144,13 @@ static int pwm_setup_pin(uint32_t gpio_number) {
 	}
 	else
 	{
-		printk("pwm module: requested GPIO is not valid\n");
+		rtdm_printk("pwm module: requested GPIO is not valid\n");
 		// return failure
 		return -1;
 	}
 
 	// return success
-	printk("DONE\n");
+	rtdm_printk("DONE\n");
 	return 0;
 }
 
@@ -128,20 +161,20 @@ static int __init pwm_start(void) {
 	uint32_t gt_rate;
 
 
-	printk(KERN_INFO "Loading PWM Module... \n");
+	rtdm_printk(KERN_INFO "Loading PWM Module... \n");
 
 	// request any timer
 	timer_ptr = omap_dm_timer_request();
 	if(timer_ptr == NULL){
 		// no timers available
-		printk("pwm module: No more gp timers available, bailing out\n");
+		rtdm_printk("pwm module: No more gp timers available, bailing out\n");
 		return -1;
 	}
 
 	// set the clock source to the system clock
 	ret = omap_dm_timer_set_source(timer_ptr, OMAP_TIMER_SRC_SYS_CLK);
 	if(ret) {
-		printk("pwm module: could not set source\n");
+		rtdm_printk("pwm module: could not set source\n");
 		return -1;
 	}
 
@@ -152,9 +185,12 @@ static int __init pwm_start(void) {
 	timer_irq = omap_dm_timer_get_irq(timer_ptr);
 
 	// install our IRQ handler for our timer
-	ret = request_irq(timer_irq, timer_irq_handler, IRQF_DISABLED | IRQF_TIMER , "pwm", timer_irq_handler);
+	ret = rtdm_irq_request(&irqt, timer_irq, timer_irq_handler, 
+			//IRQF_DISABLED | IRQF_TIMER , "pwm", timer_irq_handler);
+			0,"pwm",NULL);
+	rtdm_irq_enable(&irqt);
 	if(ret){
-		printk("pwm module: request_irq failed (on irq %d), bailing out\n", timer_irq);
+		rtdm_printk("pwm module: rtdm_request_irq failed (on irq %d), bailing out\n", timer_irq);
 		return ret;
 	}
 
@@ -174,7 +210,7 @@ static int __init pwm_start(void) {
 	omap_dm_timer_start(timer_ptr);
 
 	// done!
-	printk("pwm module: GP Timer initialized and started (%lu Hz, IRQ %d)\n", (long unsigned)gt_rate, timer_irq);
+	rtdm_printk("pwm module: GP Timer initialized and started (%lu Hz, IRQ %d)\n", (long unsigned)gt_rate, timer_irq);
 
 
 	
@@ -187,12 +223,13 @@ static int __init pwm_start(void) {
 	
 
 	// return success
+	rtdm_dev_register(&device);
 	return 0;
 }
 
 static void __exit pwm_end(void) {
 
-	printk(KERN_INFO "Exiting PWM Module. \n");
+	rtdm_printk(KERN_INFO "Exiting PWM Module. \n");
 
 	// stop the timer
 	omap_dm_timer_stop(timer_ptr);
@@ -206,6 +243,7 @@ static void __exit pwm_end(void) {
 	// release GPIO
 	gpio_free(pwm_data_ptr.pin);
 	
+	rtdm_dev_unregister(&device,1000);
 }
 
 // entry and exit points
