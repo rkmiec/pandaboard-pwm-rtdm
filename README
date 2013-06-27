@@ -1,2 +1,5 @@
-I'm trying to make a kernel module that will allow for PWM signals to be generated on the GPIO of the pandaboard.
-I'm making it a kernel module so I can use the OMAP's timers.
+It is a simple RTDM module (designed on Xenomai 2.6.2.1) to maintain PWM signal
+using gptimers for interrupts and gpio for signal value changes.
+
+
+Forked from JustinGriggs/Pandaboard-PWM.
