@@ -15,7 +15,7 @@
 #include "pwm.h"
 
 //pointer to data struct
-struct pwm_data_t pwm_data_ptr;
+static pwm_data_t pwm_data_ptr;
 //irq handler
 static rtdm_irq_t irqt;
 
@@ -29,21 +29,33 @@ MODULE_LICENSE("GPL");
 static int rtdm_open_nrt(struct rtdm_dev_context *context,
 		rtdm_user_info_t *user_info, int oflags)
 {
-	pwm_data_t *data = (pwm_data_t*) context->dev_private;
-	rtdm_printk(KERN_DEBUG "pwm: Device opened");
+	context_data_t *data = (context_data_t*) context->dev_private;
+	rtdm_printk(KERN_DEBUG "pwm: Device opened\n");
 	return 0;
 }
 
 static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 		rtdm_user_info_t *user_info, unsigned int request, void __user *arg)
 {
+	uint32_t buffer;
 	switch (request) {
 		case SET_FREQUENCY:
+			return 0;
 			break;
 		case SET_DUTYCYCLE:
+			if (rtdm_safe_copy_from_user(user_info, &buffer, arg, 
+						sizeof(uint32_t)))
+			{
+				rtdm_printk(KERN_DEBUG "pwm: ioctl: %d\n", buffer);
+				return -1;
+			}
+			rtdm_printk(KERN_DEBUG "pwm: ioctl: %d\n", buffer);
+			return sizeof(uint32_t);
 			break;
-case 
-		default: return 0;
+		case SET_DIRECTION:
+			return 0;
+			break;
+		default: return -1;
 	}
 }
 
@@ -192,11 +204,9 @@ static int __init pwm_start(void)
 	// figure out what IRQ our timer triggers
 	timer_irq = omap_dm_timer_get_irq(timer_ptr);
 
-	rtdm_dev_context *cont = rtdm_get_context();
 	// install our IRQ handler for our timer
 	ret = rtdm_irq_request(&irqt, timer_irq, timer_irq_handler, 
-			0,"pwm",(pwm_data_t*)cont->dev_private);
-	rtdm_put_context();
+			0,"pwm",NULL);
 	rtdm_irq_enable(&irqt);
 	if(ret){
 		rtdm_printk("pwm module: rtdm_request_irq failed (on irq %d), bailing out\n", timer_irq);
