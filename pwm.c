@@ -15,29 +15,49 @@
 #include "pwm.h"
 
 //pointer to data struct
-static struct pwm_data pwm_data_ptr;
+struct pwm_data_t pwm_data_ptr;
+//irq handler
 static rtdm_irq_t irqt;
 
 #define TIMER_MAX 0xFFFFFFFF
-
 
 // do some kernel module documentation
 MODULE_AUTHOR("Robert Kmiec <robertkmiec1989@gmail.com>");
 MODULE_DESCRIPTION("Hardware PWM using GPIO");
 MODULE_LICENSE("GPL");
 
+static int rtdm_open_nrt(struct rtdm_dev_context *context,
+		rtdm_user_info_t *user_info, int oflags)
+{
+	pwm_data_t *data = (pwm_data_t*) context->dev_private;
+	rtdm_printk(KERN_DEBUG "pwm: Device opened");
+	return 0;
+}
+
+static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
+		rtdm_user_info_t *user_info, unsigned int request, void __user *arg)
+{
+	switch (request) {
+		case SET_FREQUENCY:
+			break;
+		case SET_DUTYCYCLE:
+			break;
+case 
+		default: return 0;
+	}
+}
 
 static struct rtdm_device device = { 
 	.struct_version = RTDM_DEVICE_STRUCT_VER,
 	.device_flags = RTDM_NAMED_DEVICE | RTDM_EXCLUSIVE,
 	//rozmiar struktury z danymi
-	//.context_size = sizeof(data_t),
+	.context_size = sizeof(context_data_t),
 	.device_name = "pwmgpio",
-	//.open_nrt = rtdm_open_nrt,
-	//.ops = { 
-		//.close_nrt = rtdm_close_nrt,
+	.open_nrt = rtdm_open_nrt,
+	.ops = { 
+		.ioctl_rt = rtdm_ioctl_rt,
 		//.read_rt = rtdm_read_rt,
-	//},  
+	},  
 	.device_class = RTDM_CLASS_EXPERIMENTAL,
 	.device_sub_class = 4711,
 	.profile_version = 1,
@@ -66,7 +86,6 @@ static void timer_handler(void)
 	}
 }
 
- 
 
 //the interrupt handler
 //static irqreturn_t timer_irq_handler(int irq, void *dev_id) {
@@ -155,7 +174,8 @@ static int __init pwm_start(void)
 	timer_ptr = omap_dm_timer_request();
 	if(timer_ptr == NULL){
 		// no timers available
-		rtdm_printk("pwm module: No more gp timers available, bailing out\n");
+		rtdm_printk(KERN_WARNING
+				"pwm module: No more gp timers available, bailing out\n");
 		return -1;
 	}
 
@@ -172,10 +192,11 @@ static int __init pwm_start(void)
 	// figure out what IRQ our timer triggers
 	timer_irq = omap_dm_timer_get_irq(timer_ptr);
 
+	rtdm_dev_context *cont = rtdm_get_context();
 	// install our IRQ handler for our timer
 	ret = rtdm_irq_request(&irqt, timer_irq, timer_irq_handler, 
-			//IRQF_DISABLED | IRQF_TIMER , "pwm", timer_irq_handler);
-			0,"pwm",NULL);
+			0,"pwm",(pwm_data_t*)cont->dev_private);
+	rtdm_put_context();
 	rtdm_irq_enable(&irqt);
 	if(ret){
 		rtdm_printk("pwm module: rtdm_request_irq failed (on irq %d), bailing out\n", timer_irq);
@@ -223,9 +244,6 @@ static void __exit pwm_end(void)
 
 	// stop the timer
 	omap_dm_timer_stop(timer_ptr);
-
-	// release the IRQ handler
-	free_irq(timer_irq, timer_irq_handler);
 
  	// release the timer
   	omap_dm_timer_free(timer_ptr);
