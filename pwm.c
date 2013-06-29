@@ -29,33 +29,62 @@ MODULE_LICENSE("GPL");
 static int rtdm_open_nrt(struct rtdm_dev_context *context,
 		rtdm_user_info_t *user_info, int oflags)
 {
-	context_data_t *data = (context_data_t*) context->dev_private;
-	rtdm_printk(KERN_DEBUG "pwm: Device opened\n");
+	// start the timer
+	omap_dm_timer_start(timer_ptr);
+
+	// done!
+	rtdm_printk(KERN_DEBUG "pwm module: Device opened and GP Timer started\n");
+
 	return 0;
 }
 
+static int rtdm_close_nrt(struct rtdm_dev_context *context,
+		rtdm_user_info_t *user_info)
+{
+	// stop the timer
+	omap_dm_timer_stop(timer_ptr);
+
+	// done!
+	rtdm_printk(KERN_DEBUG "pwm module: Device closed and GP Timer stopped\n");
+
+	return 0;
+}
+
+//TODO: add mutex
 static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 		rtdm_user_info_t *user_info, unsigned int request, void __user *arg)
 {
-	uint32_t buffer;
+	context_data_t *data = (context_data_t*) context->dev_private;
+	if (rtdm_in_rt_context())
+		rtdm_printk("pwm ioctl: rt_context\n");
+	else rtdm_printk("pwm ioctl: nrt context %Xt\n",request);
 	switch (request) {
 		case SET_FREQUENCY:
 			return 0;
 			break;
 		case SET_DUTYCYCLE:
-			if (rtdm_safe_copy_from_user(user_info, &buffer, arg, 
-						sizeof(uint32_t)))
-			{
-				rtdm_printk(KERN_DEBUG "pwm: ioctl: %d\n", buffer);
+			rtdm_printk(KERN_WARNING "pwm: ioctl: error %p\n",arg);
+			data->size = sizeof(data->value);
+			if (rtdm_read_user_ok(user_info, arg, data->size)){
+				if (rtdm_copy_from_user(user_info, &(data->value), arg, 
+							data->size)) {
+					rtdm_printk(KERN_WARNING "pwm: ioctl: error %p\n",arg);
+					return -1;
+				}
+			} else {
+				rtdm_printk(KERN_WARNING "pwm: ioctl: read not safe\n");
 				return -1;
 			}
-			rtdm_printk(KERN_DEBUG "pwm: ioctl: %d\n", buffer);
-			return sizeof(uint32_t);
+			//set_pwm_dutycycle(1,data->value);
+			set_pwm_freq(data->value);
+			rtdm_printk("pwm: ioctl: %d\n", data->value);
+			return data->size;
 			break;
 		case SET_DIRECTION:
 			return 0;
 			break;
-		default: return -1;
+		default: 
+			return -1;
 	}
 }
 
@@ -66,16 +95,19 @@ static struct rtdm_device device = {
 	.context_size = sizeof(context_data_t),
 	.device_name = "pwmgpio",
 	.open_nrt = rtdm_open_nrt,
+	//.open_rt = rtdm_open_nrt,
 	.ops = { 
 		.ioctl_rt = rtdm_ioctl_rt,
-		//.read_rt = rtdm_read_rt,
+		.ioctl_nrt = rtdm_ioctl_rt,
+		.close_nrt = rtdm_close_nrt,
+		//.close_rt = rtdm_close_nrt,
 	},  
 	.device_class = RTDM_CLASS_EXPERIMENTAL,
 	.device_sub_class = 4711,
 	.profile_version = 1,
-	.driver_name = "PWM generation",
+	.driver_name = "pwmgpio",
 	.driver_version = RTDM_DRIVER_VER(0,1,2),
-	.peripheral_name = "pwm",
+	.peripheral_name = "pwmgpio",
 	.provider_name = "rkmiec",
 	.proc_name = device.device_name,
 };
@@ -126,9 +158,12 @@ static int set_pwm_freq(int freq) {
 // set the pwm duty cycle
 static int set_pwm_dutycycle(uint32_t pin,int dutycycle)
 {
-	//uint32_t val = TIMER_MAX+1 - (256*dutycycle/pwm_data_ptr.frequency);
-	uint32_t val = 	TIMER_MAX+1 - 2*pwm_data_ptr.load;
-	omap_dm_timer_set_match(timer_ptr,1,pwm_data_ptr.load-0x100);
+	//uint32_t val = TIMER_MAX+1 - (256*dutycycle/pwm_data_ptr.frequency); bylo
+	//uint32_t val = 	TIMER_MAX+1 - 2*pwm_data_ptr.load; bylo
+	
+	uint32_t val = 	TIMER_MAX+1 - 2*dutycycle;
+	//omap_dm_timer_set_match(timer_ptr,1,pwm_data_ptr.load-0x100); bylo
+	omap_dm_timer_set_match(timer_ptr,1,dutycycle-0x100);
 	pwm_data_ptr.dutycycle = dutycycle;
 
 	return 0;
@@ -225,20 +260,16 @@ static int __init pwm_start(void)
 	// setup timer to trigger IRQ on the overflow
 	omap_dm_timer_set_int_enable(timer_ptr, OMAP_TIMER_INT_OVERFLOW);
 	
-	// start the timer
-	omap_dm_timer_start(timer_ptr);
-
-	// done!
-	rtdm_printk("pwm module: GP Timer initialized and started (%lu Hz, IRQ %d)\n",
-			(long unsigned)gt_rate, timer_irq);
-
-	
 	// setup a GPIO
-	pwm_setup_pin(38);
+	pwm_setup_pin(GPIO_OUTPUT_PORT);
 	
-	pwm_data_ptr.pin = 38;
+	pwm_data_ptr.pin = GPIO_OUTPUT_PORT;
 
 	set_pwm_dutycycle(1,150);
+
+	rtdm_printk(KERN_DEBUG 
+			"pwm module: GP Timer initialized (%lu Hz, IRQ %d)\n",
+			(long unsigned)gt_rate, timer_irq);
 
 	// return success
 	rtdm_dev_register(&device);
@@ -247,20 +278,18 @@ static int __init pwm_start(void)
 
 static void __exit pwm_end(void)
 {
+	int i;
 	rtdm_printk(KERN_INFO "Exiting PWM Module. \n");
 
 	//disable interrupts
 	rtdm_irq_disable(&irqt);
-
-	// stop the timer
-	omap_dm_timer_stop(timer_ptr);
 
  	// release the timer
   	omap_dm_timer_free(timer_ptr);
 
 	// release GPIO
 	gpio_free(pwm_data_ptr.pin);
-	
+
 	//unregister device
 	rtdm_dev_unregister(&device,1000);
 }

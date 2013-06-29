@@ -1,6 +1,9 @@
 #ifndef PWM_H
 #define PWN_H
 
+//pwm output port
+#define GPIO_OUTPUT_PORT 39
+
 //ioctl requests
 #define SET_FREQUENCY 	0x01
 #define SET_DUTYCYCLE	0x02
@@ -38,12 +41,8 @@ typedef struct pwm_data {
 } pwm_data_t;
 
 typedef struct context_data {
-	uint32_t frequency;
-	uint32_t dutycycle;
-	uint32_t pin;
-	uint32_t timer_rate;
 	uint32_t value;
-	uint32_t load;
+	size_t size;
 } context_data_t;
 
 
