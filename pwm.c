@@ -72,15 +72,10 @@ static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 			if (rtdm_safe_copy_from_user(user_info, &(data->value), arg, 
 						data->size)) {
 				rtdm_printk(KERN_WARNING "pwm: ioctl: error %p\n",arg);
-				rtdm_printk(KERN_WARNING "pwm: ioctl: error %d\n",data->value*64);
 				return -1;
 			}
 			set_pwm_dutycycle(1,data->value*2);
-			//set_pwm_freq(data->value);
-			//omap_dm_timer_set_load(timer_ptr,1,1);
 			//omap_dm_timer_set_match(timer_ptr,1,data->value*64);
-	//		omap_dm_timer_set_prescaler(timer_ptr, data->value/8);
-			rtdm_printk("pwm: ioctl: %d\n", data->value*64);
 			return data->size;
 			break;
 		case SET_DIRECTION:
@@ -100,10 +95,10 @@ static struct rtdm_device device = {
 	.open_nrt = rtdm_open_nrt,
 	//.open_rt = rtdm_open_nrt,
 	.ops = { 
-		//.ioctl_rt = rtdm_ioctl_rt,
+		.ioctl_rt = rtdm_ioctl_rt,
 		.ioctl_nrt = rtdm_ioctl_rt,
 		.close_nrt = rtdm_close_nrt,
-		//.close_rt = rtdm_close_nrt,
+		.close_rt = rtdm_close_nrt,
 	},  
 	.device_class = RTDM_CLASS_EXPERIMENTAL,
 	.device_sub_class = 4711,
@@ -128,22 +123,23 @@ static void timer_handler(void)
 	//omap_dm_timer_write_counter(timer_ptr,0);	
 
  	// toggle pin
-	if(gpio_get_value(pwm_data_ptr.pin) == 0 ) {
+/*	if(gpio_get_value(pwm_data_ptr.pin) == 0 ) {
 		gpio_set_value(pwm_data_ptr.pin,1);
-		//rtdm_printk("high \n");
 	} else {
 		gpio_set_value(pwm_data_ptr.pin,0);
-		//rtdm_printk("low \n");
-	}
+	}*/
+	if (val == OMAP_TIMER_INT_OVERFLOW)
+		gpio_set_value(pwm_data_ptr.pin, 0);
+	else
+		gpio_set_value(pwm_data_ptr.pin, 1);
 }
 
 
 //the interrupt handler
-//static irqreturn_t timer_irq_handler(int irq, void *dev_id) {
 int timer_irq_handler(rtdm_irq_t *irq_handle)
 {
 	timer_handler();
-	// tell the kernel it's handled
+	// tell the nucleus it's handled
 	return RTDM_IRQ_HANDLED;
 }
 
@@ -165,11 +161,7 @@ static int set_pwm_freq(int freq) {
 // set the pwm duty cycle
 static int set_pwm_dutycycle(uint32_t pin,int dutycycle)
 {
-	//uint32_t val = TIMER_MAX+1 - (256*dutycycle/pwm_data_ptr.frequency); bylo
-	//uint32_t val = 	TIMER_MAX+1 - 2*pwm_data_ptr.load; bylo
-	
-	uint32_t val = 	TIMER_MAX+1 - 2*dutycycle;
-	//omap_dm_timer_set_match(timer_ptr,1,pwm_data_ptr.load-0x100); bylo
+	uint32_t val = 	TIMER_MAX+1 - dutycycle;
 	omap_dm_timer_set_match(timer_ptr,1,val);
 	pwm_data_ptr.dutycycle = val;
 
@@ -241,7 +233,7 @@ static int __init pwm_start(void)
 	}
 
 	// set prescalar to 1:1
-	omap_dm_timer_set_prescaler(timer_ptr, 0);
+	omap_dm_timer_set_prescaler(timer_ptr, 3);
 
 	// figure out what IRQ our timer triggers
 	timer_irq = omap_dm_timer_get_irq(timer_ptr);
