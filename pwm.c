@@ -18,6 +18,8 @@
 static pwm_data_t pwm_data_ptr;
 //irq handler
 static rtdm_irq_t irqt;
+static int val;
+static int debug_tab[] = {0,0,0,0,0,0,0};
 
 #define TIMER_MAX 0xFFFFFFFF
 
@@ -44,6 +46,9 @@ static int rtdm_close_nrt(struct rtdm_dev_context *context,
 	// stop the timer
 	omap_dm_timer_stop(timer_ptr);
 
+	//set gpio to low
+	gpio_set_value(pwm_data_ptr.pin, 0);
+
 	// done!
 	rtdm_printk(KERN_DEBUG "pwm module: Device closed and GP Timer stopped\n");
 
@@ -57,27 +62,25 @@ static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 	context_data_t *data = (context_data_t*) context->dev_private;
 	if (rtdm_in_rt_context())
 		rtdm_printk("pwm ioctl: rt_context\n");
-	else rtdm_printk("pwm ioctl: nrt context %Xt\n",request);
+	else rtdm_printk("pwm ioctl: nrt context 0x%x\n",request);
 	switch (request) {
 		case SET_FREQUENCY:
 			return 0;
 			break;
 		case SET_DUTYCYCLE:
-			rtdm_printk(KERN_WARNING "pwm: ioctl: error %p\n",arg);
 			data->size = sizeof(data->value);
-			if (rtdm_read_user_ok(user_info, arg, data->size)){
-				if (rtdm_copy_from_user(user_info, &(data->value), arg, 
-							data->size)) {
-					rtdm_printk(KERN_WARNING "pwm: ioctl: error %p\n",arg);
-					return -1;
-				}
-			} else {
-				rtdm_printk(KERN_WARNING "pwm: ioctl: read not safe\n");
+			if (rtdm_safe_copy_from_user(user_info, &(data->value), arg, 
+						data->size)) {
+				rtdm_printk(KERN_WARNING "pwm: ioctl: error %p\n",arg);
+				rtdm_printk(KERN_WARNING "pwm: ioctl: error %d\n",data->value*64);
 				return -1;
 			}
-			//set_pwm_dutycycle(1,data->value);
-			set_pwm_freq(data->value);
-			rtdm_printk("pwm: ioctl: %d\n", data->value);
+			set_pwm_dutycycle(1,data->value*2);
+			//set_pwm_freq(data->value);
+			//omap_dm_timer_set_load(timer_ptr,1,1);
+			//omap_dm_timer_set_match(timer_ptr,1,data->value*64);
+	//		omap_dm_timer_set_prescaler(timer_ptr, data->value/8);
+			rtdm_printk("pwm: ioctl: %d\n", data->value*64);
 			return data->size;
 			break;
 		case SET_DIRECTION:
@@ -97,7 +100,7 @@ static struct rtdm_device device = {
 	.open_nrt = rtdm_open_nrt,
 	//.open_rt = rtdm_open_nrt,
 	.ops = { 
-		.ioctl_rt = rtdm_ioctl_rt,
+		//.ioctl_rt = rtdm_ioctl_rt,
 		.ioctl_nrt = rtdm_ioctl_rt,
 		.close_nrt = rtdm_close_nrt,
 		//.close_rt = rtdm_close_nrt,
@@ -116,7 +119,11 @@ static struct rtdm_device device = {
 static void timer_handler(void)
 {
 	// reset the timer interrupt status
-	omap_dm_timer_write_status(timer_ptr,OMAP_TIMER_INT_OVERFLOW);
+	val = omap_dm_timer_read_status(timer_ptr);
+	val &= 0b111;
+	debug_tab[val]+=1;
+	omap_dm_timer_write_status(timer_ptr,OMAP_TIMER_INT_OVERFLOW|
+			OMAP_TIMER_INT_MATCH);
 	omap_dm_timer_read_status(timer_ptr); //you need to do this read
 	//omap_dm_timer_write_counter(timer_ptr,0);	
 
@@ -145,9 +152,9 @@ int timer_irq_handler(rtdm_irq_t *irq_handle)
 static int set_pwm_freq(int freq) {
 	// set preload, and autoreload of the timer
 	//
-	uint32_t period = pwm_data_ptr.timer_rate / (4*freq);
+	uint32_t period = pwm_data_ptr.timer_rate / (5*freq);
 	uint32_t load = TIMER_MAX+1 - period;
-	omap_dm_timer_set_load(timer_ptr, 1,load);
+	omap_dm_timer_set_load(timer_ptr, 1, load);
 	//store the new frequency
 	pwm_data_ptr.frequency = freq;
 	pwm_data_ptr.load = load;
@@ -163,8 +170,8 @@ static int set_pwm_dutycycle(uint32_t pin,int dutycycle)
 	
 	uint32_t val = 	TIMER_MAX+1 - 2*dutycycle;
 	//omap_dm_timer_set_match(timer_ptr,1,pwm_data_ptr.load-0x100); bylo
-	omap_dm_timer_set_match(timer_ptr,1,dutycycle-0x100);
-	pwm_data_ptr.dutycycle = dutycycle;
+	omap_dm_timer_set_match(timer_ptr,1,val);
+	pwm_data_ptr.dutycycle = val;
 
 	return 0;
 }
@@ -258,7 +265,7 @@ static int __init pwm_start(void)
 	set_pwm_freq(1000);
 
 	// setup timer to trigger IRQ on the overflow
-	omap_dm_timer_set_int_enable(timer_ptr, OMAP_TIMER_INT_OVERFLOW);
+	omap_dm_timer_set_int_enable(timer_ptr, OMAP_TIMER_INT_OVERFLOW|OMAP_TIMER_INT_MATCH);
 	
 	// setup a GPIO
 	pwm_setup_pin(GPIO_OUTPUT_PORT);
@@ -278,7 +285,6 @@ static int __init pwm_start(void)
 
 static void __exit pwm_end(void)
 {
-	int i;
 	rtdm_printk(KERN_INFO "Exiting PWM Module. \n");
 
 	//disable interrupts
@@ -292,6 +298,12 @@ static void __exit pwm_end(void)
 
 	//unregister device
 	rtdm_dev_unregister(&device,1000);
+
+	int i;
+	for (i = 0; i<6; i+=1) {
+		rtdm_printk("%d ",debug_tab[i]);
+	}
+	rtdm_printk("\n");
 }
 
 // entry and exit points
