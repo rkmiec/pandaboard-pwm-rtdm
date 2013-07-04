@@ -19,7 +19,7 @@ static pwm_data_t pwm_data_ptr;
 //irq handler
 static rtdm_irq_t irqt;
 static int val;
-static int debug_tab[] = {0,0,0,0,0,0,0};
+static int debug_tab[] = {0,0};
 
 #define TIMER_MAX 0xFFFFFFFF
 
@@ -60,9 +60,13 @@ static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 		rtdm_user_info_t *user_info, unsigned int request, void __user *arg)
 {
 	context_data_t *data = (context_data_t*) context->dev_private;
-	if (rtdm_in_rt_context())
+	if (rtdm_in_rt_context()){
+		debug_tab[0]+=1;
 		rtdm_printk("pwm ioctl: rt_context\n");
-	else rtdm_printk("pwm ioctl: nrt context 0x%x\n",request);
+	} else {
+		debug_tab[1]+=1;
+		rtdm_printk("pwm ioctl: nrt context 0x%x\n",request);
+	}
 	switch (request) {
 		case SET_FREQUENCY:
 			return 0;
@@ -74,7 +78,7 @@ static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 				rtdm_printk(KERN_WARNING "pwm: ioctl: error %p\n",arg);
 				return -1;
 			}
-			set_pwm_dutycycle(1,data->value*2);
+			set_pwm_dutycycle(1,data->value);
 			//omap_dm_timer_set_match(timer_ptr,1,data->value*64);
 			return data->size;
 			break;
@@ -89,16 +93,15 @@ static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 static struct rtdm_device device = { 
 	.struct_version = RTDM_DEVICE_STRUCT_VER,
 	.device_flags = RTDM_NAMED_DEVICE | RTDM_EXCLUSIVE,
-	//rozmiar struktury z danymi
+	//context structure size
 	.context_size = sizeof(context_data_t),
 	.device_name = "pwmgpio",
 	.open_nrt = rtdm_open_nrt,
-	//.open_rt = rtdm_open_nrt,
 	.ops = { 
 		.ioctl_rt = rtdm_ioctl_rt,
+		//Still needed, even if not real-time (like soft-rt):
 		.ioctl_nrt = rtdm_ioctl_rt,
 		.close_nrt = rtdm_close_nrt,
-		.close_rt = rtdm_close_nrt,
 	},  
 	.device_class = RTDM_CLASS_EXPERIMENTAL,
 	.device_sub_class = 4711,
@@ -113,16 +116,15 @@ static struct rtdm_device device = {
 
 static void timer_handler(void)
 {
-	// reset the timer interrupt status
 	val = omap_dm_timer_read_status(timer_ptr);
 	val &= 0b111;
-	debug_tab[val]+=1;
+	//debug_tab[val]+=1;
+	// reset the timer interrupt status
 	omap_dm_timer_write_status(timer_ptr,OMAP_TIMER_INT_OVERFLOW|
 			OMAP_TIMER_INT_MATCH);
 	omap_dm_timer_read_status(timer_ptr); //you need to do this read
 	//omap_dm_timer_write_counter(timer_ptr,0);	
 
- 	// toggle pin
 /*	if(gpio_get_value(pwm_data_ptr.pin) == 0 ) {
 		gpio_set_value(pwm_data_ptr.pin,1);
 	} else {
@@ -291,11 +293,8 @@ static void __exit pwm_end(void)
 	//unregister device
 	rtdm_dev_unregister(&device,1000);
 
-	int i;
-	for (i = 0; i<6; i+=1) {
-		rtdm_printk("%d ",debug_tab[i]);
-	}
-	rtdm_printk("\n");
+	rtdm_printk(KERN_INFO "rt calls: %d, nrt calls: %d \n",
+			debug_tab[0], debug_tab[1]);
 }
 
 // entry and exit points
