@@ -155,17 +155,24 @@ static int set_pwm_period(int period)
 	uint32_t load = TIMER_MAX+1 - (24*period);
 	omap_dm_timer_set_load(timer_ptr, 1, load);
 	//store the new load value
-	pwm_data_ptr.load = load;
+	pwm_data_ptr.load = 24*period;
+	//keep previous dutycycle
+	set_pwm_dutycycle(pwm_data_ptr.dutycycle);
 	
 	return 0;
 }
 
-// set the pwm duty cycle
+// set the pwm duty cycle (permils of period)
 static int set_pwm_dutycycle(int dutycycle)
 {
-	uint32_t val = 	TIMER_MAX+1 - dutycycle;
-	omap_dm_timer_set_match(timer_ptr,1,val);
-	pwm_data_ptr.dutycycle = val;
+	uint32_t val;
+	//uint32_t val = 	TIMER_MAX+1 - dutycycle;
+	dutycycle = (dutycycle > 950) 	? 950: dutycycle;
+	dutycycle = (dutycycle < 50) 	? 50 : dutycycle;
+	val = pwm_data_ptr.load * dutycycle / 1000 ;
+	val = TIMER_MAX + 1 - val;
+	omap_dm_timer_set_match(timer_ptr, 1, val);
+	pwm_data_ptr.dutycycle = dutycycle;
 
 	return 0;
 }
@@ -252,8 +259,9 @@ static int __init pwm_start(void)
 	gt_rate = clk_get_rate(timer_fclk);
 	pwm_data_ptr.timer_rate = gt_rate;
 
-	// set preload, and autoreload
-	// we set it to a default of 1kHz
+	//set pwm fulfillment
+	set_pwm_dutycycle(500);
+	//set preload, and autoreload
 	set_pwm_period(100);
 
 	// setup timer to trigger IRQ on the overflow
@@ -264,7 +272,6 @@ static int __init pwm_start(void)
 	
 	pwm_data_ptr.pin = GPIO_OUTPUT_PORT;
 
-	set_pwm_dutycycle(150);
 
 	rtdm_printk(KERN_DEBUG 
 			"pwm module: GP Timer initialized (%lu Hz, IRQ %d)\n",
