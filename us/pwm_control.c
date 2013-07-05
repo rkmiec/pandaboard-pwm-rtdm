@@ -6,6 +6,8 @@
 #include <native/sem.h>
 #include <stdio.h>
 
+#include "../pwm.h"
+
 
 RT_SEM write_sem;
 int val, reg;
@@ -34,12 +36,16 @@ int main( )
 	rt_task_start(&write_loop, &writer_rt, NULL);
 	printf("Wprowadz zmienna, ktora chcesz edytowac\n");
 
-	printf("1 \t- freq\n");
-	printf("2 \t- dutycycle\n");
+	printf("%d \t- period\n", SET_PERIOD);
+	printf("%d \t- dutycycle\n", SET_DUTYCYCLE);
+	printf("%d \t- direction\n", SET_DIRECTION);
+
 	//rt_printf("3 \t- pin (not implemented)\n");
 
 	for (;;){
+		printf("Wprowadz zmienna, ktora chcesz edytowac\n");
 		scanf("%d",&reg);
+		printf("Wprowadz nowa wartosc\n");
 		scanf("%d",&val);
 		rt_sem_v(&write_sem);
 	}
