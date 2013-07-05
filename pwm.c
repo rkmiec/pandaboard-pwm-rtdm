@@ -60,6 +60,12 @@ static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 		rtdm_user_info_t *user_info, unsigned int request, void __user *arg)
 {
 	context_data_t *data = (context_data_t*) context->dev_private;
+	data->size = sizeof(data->value);
+	if (rtdm_safe_copy_from_user(user_info, &(data->value), arg, 
+				data->size)) {
+		rtdm_printk(KERN_WARNING "pwm: ioctl: error %p\n",arg);
+		return -1;
+	}
 	if (rtdm_in_rt_context()){
 		debug_tab[0]+=1;
 		rtdm_printk("pwm ioctl: rt_context\n");
@@ -68,18 +74,13 @@ static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 		rtdm_printk("pwm ioctl: nrt context 0x%x\n",request);
 	}
 	switch (request) {
-		case SET_FREQUENCY:
+		case SET_PERIOD:
+			set_pwm_period(data->value);
 			return 0;
 			break;
 		case SET_DUTYCYCLE:
-			data->size = sizeof(data->value);
-			if (rtdm_safe_copy_from_user(user_info, &(data->value), arg, 
-						data->size)) {
-				rtdm_printk(KERN_WARNING "pwm: ioctl: error %p\n",arg);
-				return -1;
-			}
-			set_pwm_dutycycle(1,data->value);
-			//omap_dm_timer_set_match(timer_ptr,1,data->value*64);
+			set_pwm_dutycycle(data->value);
+			//omap_dm_timer_set_match(timer_ptr,1,data->value);
 			return data->size;
 			break;
 		case SET_DIRECTION:
@@ -146,22 +147,21 @@ int timer_irq_handler(rtdm_irq_t *irq_handle)
 }
 
 
-// set the pwm frequency
-static int set_pwm_freq(int freq) {
+//set the pwm full cycle period in 10microseconds.
+//for example: set_pwm_period(100) = 1 millisecond period
+static int set_pwm_period(int period)
+{
 	// set preload, and autoreload of the timer
-	//
-	uint32_t period = pwm_data_ptr.timer_rate / (5*freq);
-	uint32_t load = TIMER_MAX+1 - period;
+	uint32_t load = TIMER_MAX+1 - (24*period);
 	omap_dm_timer_set_load(timer_ptr, 1, load);
-	//store the new frequency
-	pwm_data_ptr.frequency = freq;
+	//store the new load value
 	pwm_data_ptr.load = load;
 	
 	return 0;
 }
 
 // set the pwm duty cycle
-static int set_pwm_dutycycle(uint32_t pin,int dutycycle)
+static int set_pwm_dutycycle(int dutycycle)
 {
 	uint32_t val = 	TIMER_MAX+1 - dutycycle;
 	omap_dm_timer_set_match(timer_ptr,1,val);
@@ -210,11 +210,9 @@ static int pwm_setup_pin(uint32_t gpio_number)
 
 static int __init pwm_start(void)
 {
-
 	int ret = 0;
   	struct clk *timer_fclk;
 	uint32_t gt_rate;
-
 
 	rtdm_printk(KERN_INFO "Loading PWM Module... \n");
 
@@ -234,8 +232,8 @@ static int __init pwm_start(void)
 		return -1;
 	}
 
-	// set prescalar to 1:1
-	omap_dm_timer_set_prescaler(timer_ptr, 3);
+	//timer prescaler settings (look at pwm.h for more settings)
+	omap_dm_timer_set_prescaler(timer_ptr, TIMER_PRESC_1_16);
 
 	// figure out what IRQ our timer triggers
 	timer_irq = omap_dm_timer_get_irq(timer_ptr);
@@ -256,7 +254,7 @@ static int __init pwm_start(void)
 
 	// set preload, and autoreload
 	// we set it to a default of 1kHz
-	set_pwm_freq(1000);
+	set_pwm_period(100);
 
 	// setup timer to trigger IRQ on the overflow
 	omap_dm_timer_set_int_enable(timer_ptr, OMAP_TIMER_INT_OVERFLOW|OMAP_TIMER_INT_MATCH);
@@ -266,7 +264,7 @@ static int __init pwm_start(void)
 	
 	pwm_data_ptr.pin = GPIO_OUTPUT_PORT;
 
-	set_pwm_dutycycle(1,150);
+	set_pwm_dutycycle(150);
 
 	rtdm_printk(KERN_DEBUG 
 			"pwm module: GP Timer initialized (%lu Hz, IRQ %d)\n",
