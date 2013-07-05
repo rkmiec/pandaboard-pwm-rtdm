@@ -47,7 +47,7 @@ static int rtdm_close_nrt(struct rtdm_dev_context *context,
 	omap_dm_timer_stop(timer_ptr);
 
 	//set gpio to low
-	gpio_set_value(pwm_data_ptr.pin, 0);
+	gpio_set_value(pwm_data_ptr.pin, 1);
 
 	// done!
 	rtdm_printk(KERN_DEBUG "pwm module: Device closed and GP Timer stopped\n");
@@ -146,7 +146,6 @@ int timer_irq_handler(rtdm_irq_t *irq_handle)
 	return RTDM_IRQ_HANDLED;
 }
 
-
 //set the pwm full cycle period in 10microseconds.
 //for example: set_pwm_period(100) = 1 millisecond period
 static int set_pwm_period(int period)
@@ -167,8 +166,8 @@ static int set_pwm_dutycycle(int dutycycle)
 {
 	uint32_t val;
 	//uint32_t val = 	TIMER_MAX+1 - dutycycle;
-	dutycycle = (dutycycle > 950) 	? 950: dutycycle;
-	dutycycle = (dutycycle < 50) 	? 50 : dutycycle;
+	dutycycle = (dutycycle > 1000) 	? 1000	: dutycycle;
+	dutycycle = (dutycycle < 	0) 	? 0 	: dutycycle;
 	val = pwm_data_ptr.load * dutycycle / 1000 ;
 	val = TIMER_MAX + 1 - val;
 	omap_dm_timer_set_match(timer_ptr, 1, val);
