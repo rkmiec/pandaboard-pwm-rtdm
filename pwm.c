@@ -15,7 +15,7 @@
 #include "pwm.h"
 
 //pointer to data struct
-static pwm_data_t pwm_data_ptr;
+static pwm_data_t pwm_data;
 //irq handler
 static rtdm_irq_t irqt;
 static int val;
@@ -47,7 +47,7 @@ static int rtdm_close_nrt(struct rtdm_dev_context *context,
 	omap_dm_timer_stop(timer_ptr);
 
 	//set gpio to low
-	gpio_set_value(pwm_data_ptr.pin, 1);
+	gpio_set_value(pwm_data.pin, 0);
 
 	// done!
 	rtdm_printk(KERN_DEBUG "pwm module: Device closed and GP Timer stopped\n");
@@ -80,10 +80,16 @@ static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 			break;
 		case SET_DUTYCYCLE:
 			set_pwm_dutycycle(data->value);
-			//omap_dm_timer_set_match(timer_ptr,1,data->value);
-			return data->size;
+			return 0;
 			break;
 		case SET_DIRECTION:
+			if (data->value == 1){
+				pwm_data.pin = GPIO_OUTPUT_PORT_R;
+				gpio_set_value(GPIO_OUTPUT_PORT_L, 0);
+			} else {
+				pwm_data.pin = GPIO_OUTPUT_PORT_L;
+				gpio_set_value(GPIO_OUTPUT_PORT_R, 0);
+			}
 			return 0;
 			break;
 		default: 
@@ -119,22 +125,21 @@ static void timer_handler(void)
 {
 	val = omap_dm_timer_read_status(timer_ptr);
 	val &= 0b111;
-	//debug_tab[val]+=1;
 	// reset the timer interrupt status
 	omap_dm_timer_write_status(timer_ptr,OMAP_TIMER_INT_OVERFLOW|
 			OMAP_TIMER_INT_MATCH);
-	omap_dm_timer_read_status(timer_ptr); //you need to do this read
-	//omap_dm_timer_write_counter(timer_ptr,0);	
+	//you need to do this read
+	omap_dm_timer_read_status(timer_ptr);
 
-/*	if(gpio_get_value(pwm_data_ptr.pin) == 0 ) {
-		gpio_set_value(pwm_data_ptr.pin,1);
+/*	if(gpio_get_value(pwm_data.pin) == 0 ) {
+		gpio_set_value(pwm_data.pin,1);
 	} else {
-		gpio_set_value(pwm_data_ptr.pin,0);
+		gpio_set_value(pwm_data.pin,0);
 	}*/
 	if (val == OMAP_TIMER_INT_OVERFLOW)
-		gpio_set_value(pwm_data_ptr.pin, 0);
+		gpio_set_value(pwm_data.pin, 0);
 	else
-		gpio_set_value(pwm_data_ptr.pin, 1);
+		gpio_set_value(pwm_data.pin, 1);
 }
 
 
@@ -154,9 +159,9 @@ static int set_pwm_period(int period)
 	uint32_t load = TIMER_MAX+1 - (24*period);
 	omap_dm_timer_set_load(timer_ptr, 1, load);
 	//store the new load value
-	pwm_data_ptr.load = 24*period;
+	pwm_data.load = 24*period;
 	//keep previous dutycycle
-	set_pwm_dutycycle(pwm_data_ptr.dutycycle);
+	set_pwm_dutycycle(pwm_data.dutycycle);
 	
 	return 0;
 }
@@ -168,10 +173,10 @@ static int set_pwm_dutycycle(int dutycycle)
 	//uint32_t val = 	TIMER_MAX+1 - dutycycle;
 	dutycycle = (dutycycle > 1000) 	? 1000	: dutycycle;
 	dutycycle = (dutycycle < 	0) 	? 0 	: dutycycle;
-	val = pwm_data_ptr.load * dutycycle / 1000 ;
+	val = pwm_data.load * dutycycle / 1000 ;
 	val = TIMER_MAX + 1 - val;
 	omap_dm_timer_set_match(timer_ptr, 1, val);
-	pwm_data_ptr.dutycycle = dutycycle;
+	pwm_data.dutycycle = dutycycle;
 
 	return 0;
 }
@@ -182,30 +187,24 @@ static int pwm_setup_pin(uint32_t gpio_number)
 	int err;
 
 	// see if that pin is available to use
-	if (gpio_is_valid(gpio_number)) {
+	if (gpio_is_valid(gpio_number)){
 		rtdm_printk("pwm module: setting up gpio pin %i...",gpio_number);
 		// allocate the GPIO pin
 		err = gpio_request(gpio_number,"pwmIRQ");
-		//error check
-		if(err) {
+
+		if(err){
 			rtdm_printk("pwm module: failed to request GPIO %i\n",gpio_number);
 			return -1;
 		}
 
-		// set as output
 		err = gpio_direction_output(gpio_number,0);
-
-		//error check
-		if(err) {
+		
+		if(err){
 			rtdm_printk("pwm module: failed to set GPIO to ouput\n");
 			return -1;
 		}
-
-		//add gpio data to struct
-		pwm_data_ptr.pin = gpio_number;
 	} else {
 		rtdm_printk("pwm module: requested GPIO is not valid\n");
-		// return failure
 		return -1;
 	}
 
@@ -256,7 +255,7 @@ static int __init pwm_start(void)
 	// get clock rate in Hz and add it to struct
 	timer_fclk = omap_dm_timer_get_fclk(timer_ptr);
 	gt_rate = clk_get_rate(timer_fclk);
-	pwm_data_ptr.timer_rate = gt_rate;
+	pwm_data.timer_rate = gt_rate;
 
 	//set pwm fulfillment
 	set_pwm_dutycycle(500);
@@ -267,10 +266,10 @@ static int __init pwm_start(void)
 	omap_dm_timer_set_int_enable(timer_ptr, OMAP_TIMER_INT_OVERFLOW|OMAP_TIMER_INT_MATCH);
 	
 	// setup a GPIO
-	pwm_setup_pin(GPIO_OUTPUT_PORT);
+	pwm_setup_pin(GPIO_OUTPUT_PORT_R);
+	pwm_setup_pin(GPIO_OUTPUT_PORT_L);
 	
-	pwm_data_ptr.pin = GPIO_OUTPUT_PORT;
-
+	pwm_data.pin = GPIO_OUTPUT_PORT_R;
 
 	rtdm_printk(KERN_DEBUG 
 			"pwm module: GP Timer initialized (%lu Hz, IRQ %d)\n",
@@ -292,7 +291,8 @@ static void __exit pwm_end(void)
   	omap_dm_timer_free(timer_ptr);
 
 	// release GPIO
-	gpio_free(pwm_data_ptr.pin);
+	gpio_free(GPIO_OUTPUT_PORT_R);
+	gpio_free(GPIO_OUTPUT_PORT_L);
 
 	//unregister device
 	rtdm_dev_unregister(&device,1000);

@@ -13,7 +13,8 @@
 #define TIMER_PRESC_1_256   7  
 
 //pwm output port
-#define GPIO_OUTPUT_PORT 39
+#define GPIO_OUTPUT_PORT_R 39
+#define GPIO_OUTPUT_PORT_L 38
 
 //ioctl requests
 #define SET_PERIOD	 	0x01
