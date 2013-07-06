@@ -47,7 +47,7 @@ static int rtdm_close_nrt(struct rtdm_dev_context *context,
 	omap_dm_timer_stop(timer_ptr);
 
 	//set gpio to low
-	gpio_set_value(pwm_data.pin, 0);
+	gpio_set_value(pwm_data.pin, OFF_VALUE);
 
 	// done!
 	rtdm_printk(KERN_DEBUG "pwm module: Device closed and GP Timer stopped\n");
@@ -85,10 +85,10 @@ static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 		case SET_DIRECTION:
 			if (data->value == 1){
 				pwm_data.pin = GPIO_OUTPUT_PORT_R;
-				gpio_set_value(GPIO_OUTPUT_PORT_L, 0);
+				gpio_set_value(GPIO_OUTPUT_PORT_L, OFF_VALUE);
 			} else {
 				pwm_data.pin = GPIO_OUTPUT_PORT_L;
-				gpio_set_value(GPIO_OUTPUT_PORT_R, 0);
+				gpio_set_value(GPIO_OUTPUT_PORT_R, OFF_VALUE);
 			}
 			return 0;
 			break;
