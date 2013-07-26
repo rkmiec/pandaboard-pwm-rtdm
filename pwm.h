@@ -55,5 +55,6 @@ typedef struct context_data {
 static int set_pwm_period(int period);
 static int set_pwm_dutycycle(int dutycycle);
 static int pwm_setup_pin(uint32_t gpio_number);
+static void set_motor_direction(int new_pin);
 
 #endif

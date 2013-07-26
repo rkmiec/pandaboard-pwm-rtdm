@@ -11,7 +11,7 @@ EXTRA_CFLAGS := -I$(KSRC)/include/xenomai
 EXTRA_CFLAGS += -I$(KSRC)/include/xenomai/posix $(ADD_CFLAGS)
 
 all::
-	$(MAKE) -C $(KSRC) SUBDIRS=$(PWD) modules
+	$(MAKE) -C $(KSRC) M=$(PWD) modules
 
 clean::
 	$(RM) $(CLEANMOD) *.o *.ko *.mod.c Module*.symvers 

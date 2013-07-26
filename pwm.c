@@ -83,13 +83,7 @@ static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 			return 0;
 			break;
 		case SET_DIRECTION:
-			if (data->value == 1){
-				pwm_data.pin = GPIO_OUTPUT_PORT_R;
-				gpio_set_value(GPIO_OUTPUT_PORT_L, OFF_VALUE);
-			} else {
-				pwm_data.pin = GPIO_OUTPUT_PORT_L;
-				gpio_set_value(GPIO_OUTPUT_PORT_R, OFF_VALUE);
-			}
+			set_motor_direction(data->value);
 			return 0;
 			break;
 		default: 
@@ -142,7 +136,6 @@ static void timer_handler(void)
 		gpio_set_value(pwm_data.pin, 1);
 }
 
-
 //the interrupt handler
 int timer_irq_handler(rtdm_irq_t *irq_handle)
 {
@@ -170,7 +163,6 @@ static int set_pwm_period(int period)
 static int set_pwm_dutycycle(int dutycycle)
 {
 	uint32_t val;
-	//uint32_t val = 	TIMER_MAX+1 - dutycycle;
 	dutycycle = (dutycycle > 1000) 	? 1000	: dutycycle;
 	dutycycle = (dutycycle < 	0) 	? 0 	: dutycycle;
 	val = pwm_data.load * dutycycle / 1000 ;
@@ -179,6 +171,18 @@ static int set_pwm_dutycycle(int dutycycle)
 	pwm_data.dutycycle = dutycycle;
 
 	return 0;
+}
+
+//set motor rotation direction
+static void set_motor_direction(int new_pin)
+{
+	if (new_pin == 1){
+		pwm_data.pin = GPIO_OUTPUT_PORT_R;
+		gpio_set_value(GPIO_OUTPUT_PORT_L, OFF_VALUE);
+	} else {
+		pwm_data.pin = GPIO_OUTPUT_PORT_L;
+		gpio_set_value(GPIO_OUTPUT_PORT_R, OFF_VALUE);
+	}
 }
 
 // setup a GPIO pin for use
