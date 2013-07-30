@@ -29,7 +29,7 @@
 #define GET_DIRECTION	0x16
 
 //output pin off value
-#define OFF_VALUE 1
+#define OFF_VALUE 0
 
 // opaque pointer to timer object
 static struct omap_dm_timer *timer_ptr;

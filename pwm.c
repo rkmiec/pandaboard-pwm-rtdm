@@ -114,7 +114,6 @@ static struct rtdm_device device = {
 	.proc_name = device.device_name,
 };
 
-
 static void timer_handler(void)
 {
 	val = omap_dm_timer_read_status(timer_ptr);
