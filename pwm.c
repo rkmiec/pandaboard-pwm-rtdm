@@ -291,6 +291,7 @@ static void __exit pwm_end(void)
 	gpio_free(GPIO_OUTPUT_PORT_L);
 
 	//unregister device
+	rtdm_mutex_destroy(&write_mutex);
 	rtdm_dev_unregister(&device,1000);
 
 	rtdm_printk(KERN_INFO "rt calls: %d, nrt calls: %d \n",
