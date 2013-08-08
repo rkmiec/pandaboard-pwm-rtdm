@@ -20,6 +20,7 @@ static pwm_data_t pwm_data;
 static rtdm_irq_t irqt;
 static int val;
 static int debug_tab[] = {0,0};
+rtdm_mutex_t write_mutex;
 
 #define TIMER_MAX 0xFFFFFFFF
 
@@ -31,10 +32,7 @@ MODULE_LICENSE("GPL");
 static int rtdm_open_nrt(struct rtdm_dev_context *context,
 		rtdm_user_info_t *user_info, int oflags)
 {
-	// start the timer
 	omap_dm_timer_start(timer_ptr);
-
-	// done!
 	rtdm_printk(KERN_DEBUG "pwm module: Device opened and GP Timer started\n");
 
 	return 0;
@@ -43,22 +41,17 @@ static int rtdm_open_nrt(struct rtdm_dev_context *context,
 static int rtdm_close_nrt(struct rtdm_dev_context *context,
 		rtdm_user_info_t *user_info)
 {
-	// stop the timer
 	omap_dm_timer_stop(timer_ptr);
-
-	//set gpio to low
 	gpio_set_value(pwm_data.pin, OFF_VALUE);
-
-	// done!
 	rtdm_printk(KERN_DEBUG "pwm module: Device closed and GP Timer stopped\n");
 
 	return 0;
 }
 
-//TODO: add mutex
 static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 		rtdm_user_info_t *user_info, unsigned int request, void __user *arg)
 {
+	rtdm_mutex_lock(&write_mutex);
 	context_data_t *data = (context_data_t*) context->dev_private;
 	data->size = sizeof(data->value);
 	if (rtdm_safe_copy_from_user(user_info, &(data->value), arg, 
@@ -76,19 +69,18 @@ static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 	switch (request) {
 		case SET_PERIOD:
 			set_pwm_period(data->value);
-			return 0;
 			break;
 		case SET_DUTYCYCLE:
 			set_pwm_dutycycle(data->value);
-			return 0;
 			break;
 		case SET_DIRECTION:
 			set_motor_direction(data->value);
-			return 0;
 			break;
 		default: 
+			rtdm_mutex_unlock(&write_mutex);
 			return -1;
 	}
+	return 0;
 }
 
 static struct rtdm_device device = { 
@@ -277,6 +269,7 @@ static int __init pwm_start(void)
 	rtdm_printk(KERN_DEBUG 
 			"pwm module: GP Timer initialized (%lu Hz, IRQ %d)\n",
 			(long unsigned)gt_rate, timer_irq);
+	rtdm_mutex_init(&write_mutex);
 
 	// return success
 	rtdm_dev_register(&device);
