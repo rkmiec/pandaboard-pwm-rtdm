@@ -69,9 +69,9 @@ static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 			set_motor_direction(data->value);
 			break;
 		default: 
-			rtdm_mutex_unlock(&write_mutex);
 			return -1;
 	}
+	rtdm_mutex_unlock(&write_mutex);
 	return 0;
 }
 
