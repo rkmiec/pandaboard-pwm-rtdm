@@ -19,7 +19,6 @@ static pwm_data_t pwm_data;
 //irq handler
 static rtdm_irq_t irqt;
 static int val;
-static int debug_tab[] = {0,0};
 rtdm_mutex_t write_mutex;
 
 #define TIMER_MAX 0xFFFFFFFF
@@ -58,13 +57,6 @@ static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 				data->size)) {
 		rtdm_printk(KERN_WARNING "pwm: ioctl: error %p\n",arg);
 		return -1;
-	}
-	if (rtdm_in_rt_context()){
-		debug_tab[0]+=1;
-		rtdm_printk("pwm ioctl: rt_context\n");
-	} else {
-		debug_tab[1]+=1;
-		rtdm_printk("pwm ioctl: nrt context 0x%x\n",request);
 	}
 	switch (request) {
 		case SET_PERIOD:
@@ -293,9 +285,6 @@ static void __exit pwm_end(void)
 	//unregister device
 	rtdm_mutex_destroy(&write_mutex);
 	rtdm_dev_unregister(&device,1000);
-
-	rtdm_printk(KERN_INFO "rt calls: %d, nrt calls: %d \n",
-			debug_tab[0], debug_tab[1]);
 }
 
 // entry and exit points
