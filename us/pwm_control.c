@@ -27,6 +27,7 @@ int main( )
 {
 	RT_TASK write_loop;
 	file = rt_dev_open("pwmgpio",0);
+	printf("device number: %d\n", file);
 	if (file < 0)
 		return -1;
 	mlockall(MCL_CURRENT | MCL_FUTURE);

@@ -19,7 +19,7 @@ static pwm_data_t pwm_data;
 //irq handler
 static rtdm_irq_t irqt;
 static int val;
-rtdm_mutex_t write_mutex;
+//rtdm_mutex_t write_mutex;
 
 #define TIMER_MAX 0xFFFFFFFF
 
@@ -50,7 +50,7 @@ static int rtdm_close_nrt(struct rtdm_dev_context *context,
 static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 		rtdm_user_info_t *user_info, unsigned int request, void __user *arg)
 {
-	rtdm_mutex_lock(&write_mutex);
+	//rtdm_mutex_lock(&write_mutex);
 	context_data_t *data = (context_data_t*) context->dev_private;
 	data->size = sizeof(data->value);
 	if (rtdm_safe_copy_from_user(user_info, &(data->value), arg, 
@@ -69,10 +69,10 @@ static int rtdm_ioctl_rt(struct rtdm_dev_context *context,
 			set_motor_direction(data->value);
 			break;
 		default: 
-			rtdm_mutex_unlock(&write_mutex);
+			//rtdm_mutex_unlock(&write_mutex);
 			return -1;
 	}
-	rtdm_mutex_unlock(&write_mutex);
+	//rtdm_mutex_unlock(&write_mutex);
 	return 0;
 }
 
@@ -262,7 +262,7 @@ static int __init pwm_start(void)
 	rtdm_printk(KERN_DEBUG 
 			"pwm module: GP Timer initialized (%lu Hz, IRQ %d)\n",
 			(long unsigned)gt_rate, timer_irq);
-	rtdm_mutex_init(&write_mutex);
+	//rtdm_mutex_init(&write_mutex);
 
 	// return success
 	rtdm_dev_register(&device);
@@ -284,7 +284,7 @@ static void __exit pwm_end(void)
 	gpio_free(GPIO_OUTPUT_PORT_L);
 
 	//unregister device
-	rtdm_mutex_destroy(&write_mutex);
+	//rtdm_mutex_destroy(&write_mutex);
 	rtdm_dev_unregister(&device,1000);
 }
 
