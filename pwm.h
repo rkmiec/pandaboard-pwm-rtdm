@@ -14,7 +14,7 @@
 
 //pwm output port
 #define GPIO_OUTPUT_PORT_R 39
-#define GPIO_OUTPUT_PORT_L 38
+#define GPIO_OUTPUT_PORT_L 139
 
 //ioctl requests
 #define SET_PERIOD	 	0x01
